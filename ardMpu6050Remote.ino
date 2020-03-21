@@ -165,24 +165,23 @@ void loop_bt() {
   }
 }
 
-int calcCount = 0;
 void loop_balance() {
 
   if (!dmpReady) return;
   // get current FIFO count
   fifoCount = mpu.getFIFOCount();
-
+  mpuInterrupt = false;
+  mpuIntStatus = mpu.getIntStatus();
+  //Serial.println("status="+String(mpuIntStatus) + " fifo="+String(fifoCount));
      // Serial.println(String(mpuIntStatus)+" " + String(fifoCount)+"/"+String(packetSize));
-  /*if ((mpuIntStatus & 0x10) || fifoCount >= packetSize)
+  if ((mpuIntStatus & 0x10) || fifoCount > packetSize)
   {
       // reset so we can continue cleanly
       mpu.resetFIFO();
       fifoCount = 0;
       serprintln("FO!");   
   }
-  else if (mpuIntStatus & 0x02)
-  */
-  if (fifoCount)
+  else if (mpuIntStatus & 0x02)  
   {
       // wait for correct available data length, should be a VERY short wait
       while (fifoCount < packetSize) fifoCount = mpu.getFIFOCount();
