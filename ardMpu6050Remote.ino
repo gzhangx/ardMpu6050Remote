@@ -5,20 +5,17 @@
  * Build on Lib: https://github.com/jrowberg/i2cdevlib/tree/master/Arduino/MPU6050
  */
 
-#include "I2Cdev.h"
-#include <PID_v1.h> //From https://github.com/br3ttb/Arduino-PID-Library/blob/master/PID_v1.h
+
 #include "MPU6050_6Axis_MotionApps20.h" //https://github.com/jrowberg/i2cdevlib/tree/master/Arduino/MPU6050
 //A4 -SDA
 //A5-SCL
 #include "SoftwareSerial.h"
+#include "GArduinoBufUtil.h"
 const int BLUEINT = 2;
 const int MPUINT = 3;
 SoftwareSerial BTSerial(BLUEINT,10); // blue tx, blue rx
-const int BT_BUF_LEN=128;
-char sendstr[BT_BUF_LEN+16];
-int sendstrpos = 0; 
 unsigned long lastAvailableTime = millis();
-
+unsigned long debugShow = 0;
 //A5 => SCL
 //A4 => SDA
 #if I2CDEV_IMPLEMENTATION == I2CDEV_ARDUINO_WIRE
@@ -39,13 +36,18 @@ Quaternion q;           // [w, x, y, z]         quaternion container
 VectorFloat gravity;    // [x, y, z]            gravity vector
 float ypr[3];           // [yaw, pitch, roll]   yaw/pitch/roll container and gravity vector
 
- 
-
+#define LED_PIN 13 // (Arduino is 13, Teensy is 11, Teensy++ is 6)
+bool blinkState = false;
 void serprintln(String s) {
   if (Serial) Serial.println(s);    
   //for (int i = 0; i < s.length(); i++)
         //BTSerial.write(s[i]);         
 }
+
+RecBuf serBuf, blueBuf;
+
+unsigned long lastBlueSendTime = millis();
+String blueState = "INIT";
 
 String blueReportStr = "";
 String curWorkingBlueReportStr = "";
@@ -138,31 +140,77 @@ void setup() {
         serprintln(F(")"));
     }
 
+    pinMode(LED_PIN, OUTPUT);
 }
 
 
 void loop() { 
+  
+  if (millis() - lastBlueSendTime > 1000) {
+    lastBlueSendTime = millis();
+    if (blueState == "INIT") {
+      BTSerial.write("AT\r\n");
+      blinkState = !blinkState;
+      Serial.println("led to " + String(blinkState));
+      digitalWrite(LED_PIN, blinkState);
+    }else  if (blueState == "OK") {
+      BTSerial.write("AT+INQ\r\n");
+      blueState = "WAIT";
+      blinkState = !blinkState;
+      Serial.println("led to " + String(blinkState));
+      digitalWrite(LED_PIN, blinkState);
+    }
+  }
+  
   loop_bt();  
   loop_balance();
   actualStateBlueReport();
 }
 
-
-char receiveStr[BT_BUF_LEN+16];
-int receivePos = 0;
-String curBtCmd = "";
-String curBtName = "";
 void loop_bt() {  
   if (BTSerial.available()){    
-        int c = BTSerial.read();
-        Serial.write(c);        
+    int  c = BTSerial.read();
+     if (blueBuf.onRecv(c)) {
+       Serial.println(blueBuf.origVal);
+       if (blueBuf.origVal == "OK") {
+        if (blueState == "INIT")
+          blueState = "OK";
+       }
+       if (blueBuf.origVal.startsWith("+INQ:")) {
+         Serial.println("debug got inq");
+         char c = blueBuf.origVal.charAt(5);
+         Serial.println("number is " + String(c));
+         String hex = blueBuf.origVal.substring(7);
+         Serial.println("debug hex " + hex);
+         if (hex == "0x5C313E2D5482") {
+            Serial.println("got it");
+            blueState = "CONNECTED";
+            blinkState = 1;
+            Serial.println("led to " + String(blinkState));
+            digitalWrite(LED_PIN, 1);
+            BTSerial.write(("AT+CONN"+String(c)+"\r\n").c_str());
+         }
+       }
+       
+     }
   }
   // Keep reading from Arduino Serial Monitor and send to HC-05
-  while (Serial.available()){
+  if (Serial.available()){
     int c = Serial.read();
-    Serial.write(c);
-    BTSerial.write(c);
-  }
+    if (serBuf.onRecv(c)) {
+      if (serBuf.val == "led") {
+        blinkState = !blinkState;
+        Serial.println("led to " + String(blinkState));
+        digitalWrite(LED_PIN, blinkState);
+      }else if (serBuf.val == "blueinit") {
+        blueState = "INIT";
+      }else if (serBuf.cmd == "show") {
+        debugShow = millis()+serBuf.val.toInt();
+      }
+      BTSerial.write(serBuf.val.c_str());
+      BTSerial.write("\r\n");
+    }
+  }  
 }
 
 void loop_balance() {
@@ -174,29 +222,15 @@ void loop_balance() {
   mpuIntStatus = mpu.getIntStatus();
   //Serial.println("status="+String(mpuIntStatus) + " fifo="+String(fifoCount));
      // Serial.println(String(mpuIntStatus)+" " + String(fifoCount)+"/"+String(packetSize));
-  if ((mpuIntStatus & 0x10) || fifoCount > packetSize)
-  {
-      // reset so we can continue cleanly
-      mpu.resetFIFO();
-      fifoCount = 0;
-      serprintln("FO!");   
-  }
-  else if (mpuIntStatus & 0x02)  
-  {
-      // wait for correct available data length, should be a VERY short wait
-      while (fifoCount < packetSize) fifoCount = mpu.getFIFOCount();
-
-      // read a packet from FIFO
-      mpu.getFIFOBytes(fifoBuffer, packetSize);
-        
-      // track FIFO count here in case there is > 1 packet available
-      // (this lets us immediately read more without waiting for an interrupt)
-      fifoCount -= packetSize;
-
+  if (mpu.dmpGetCurrentFIFOPacket(fifoBuffer))
+  {      
       mpu.dmpGetQuaternion(&q, fifoBuffer); //get value for q
       mpu.dmpGetGravity(&gravity, &q); //get value for gravity
       mpu.dmpGetYawPitchRoll(ypr, &q, &gravity); //get value for ypr
-      Serial.println(String(ypr[0]) + " " + String(ypr[1])+" " + String(ypr[2]));
+      if (debugShow > millis()) {
+        Serial.println(String(ypr[0]) + " " + String(ypr[1])+" " + String(ypr[2]));
+      }
+      
    }
    //serprintln("int="+String(mpuInterrupt) + " fifoCount=" + String(fifoCount)+"/"+String(packetSize)+" i=" +String(input)+" o=" + String(output));
 }
