@@ -30,7 +30,7 @@ uint8_t mpuIntStatus;   // holds actual interrupt status byte from MPU
 uint16_t packetSize;    // expected DMP packet size (default is 42 bytes)
 uint16_t fifoCount;     // count of all bytes currently in FIFO
 uint8_t fifoBuffer[BT_BUF_LEN]; // FIFO storage buffer, for me it is 42
-
+unsigned long ledBlinkTime = 3000;
 // orientation/motion vars
 Quaternion q;           // [w, x, y, z]         quaternion container
 VectorFloat gravity;    // [x, y, z]            gravity vector
@@ -146,20 +146,19 @@ void setup() {
 
 void loop() { 
   
-  if (millis() - lastBlueSendTime > 2000) {
+  if (millis() - lastBlueSendTime > ledBlinkTime) {
+    blinkState = !blinkState;
+    digitalWrite(LED_PIN, blinkState);
     lastBlueSendTime = millis();
     if (blueState == "INIT") {
       BTSerial.write("AT\r\n");
       blueState = "WAITOK";
-      blinkState = !blinkState;
-      Serial.println("led to " + String(blinkState));
-      digitalWrite(LED_PIN, blinkState);
+      Serial.println("Sent AT");
     }else  if (blueState == "OK") {
       BTSerial.write("AT+INQ\r\n");
-      blueState = "WAIT";
-      blinkState = !blinkState;
-      Serial.println("led to " + String(blinkState));
-      digitalWrite(LED_PIN, blinkState);
+      ledBlinkTime = 1000;
+      Serial.println("Sent INQ state=" + blueState);
+      blueState = "WAIT";      
     }
   }
   
@@ -174,23 +173,24 @@ void loop_bt() {
      if (blueBuf.onRecv(c)) {
        Serial.println(blueBuf.origVal);
        if (blueBuf.origVal == "OK") {
-        if (blueState == "INIT")
-          blueState = "OK";
+          if (blueState == "INIT" || blueState == "WAITOK") {
+            ledBlinkTime = 1500;
+            blueState = "OK";
+          }
        }
        if (blueBuf.origVal.startsWith("+INQ:")) {
-         Serial.println("debug got inq");
+         Serial.println("got inq: " + blueBuf.origVal);
          char c = blueBuf.origVal.charAt(5);
-         Serial.println("number is " + String(c));
          String hex = blueBuf.origVal.substring(7);
-         Serial.println("debug hex " + hex);
          if (hex == "0x5C313E2D5482") {
-            Serial.println("got it");
-            blueState = "CONNECTED";
-            blinkState = 1;
-            Serial.println("led to " + String(blinkState));
-            digitalWrite(LED_PIN, 1);
+            ledBlinkTime = 500;
+            Serial.println("got address, ready to connect");
+            blueState = "CONNECTING";
             BTSerial.write(("AT+CONN"+String(c)+"\r\n").c_str());
          }
+       }else if (blueBuf.origVal == "+Connected") {
+          ledBlinkTime = 200;
+          blueState = "CONNECTED";
        }
        
      }
