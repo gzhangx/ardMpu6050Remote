@@ -146,10 +146,11 @@ void setup() {
 
 void loop() { 
   
-  if (millis() - lastBlueSendTime > 1000) {
+  if (millis() - lastBlueSendTime > 2000) {
     lastBlueSendTime = millis();
     if (blueState == "INIT") {
       BTSerial.write("AT\r\n");
+      blueState = "WAITOK";
       blinkState = !blinkState;
       Serial.println("led to " + String(blinkState));
       digitalWrite(LED_PIN, blinkState);
@@ -207,7 +208,7 @@ void loop_bt() {
       }else if (serBuf.cmd == "show") {
         debugShow = millis()+serBuf.val.toInt();
       }
-      BTSerial.write(serBuf.val.c_str());
+      BTSerial.write(serBuf.origVal.c_str());
       BTSerial.write("\r\n");
     }
   }  
