@@ -40,6 +40,8 @@ float yprOld[3] = {0,0,0};
 float yprMax[3] = {0,0,0}, yprMin[3]= {0,0,0};
 
 #define LED_PIN 13 // (Arduino is 13, Teensy is 11, Teensy++ is 6)
+int START_PIN = 8;
+
 bool blinkState = false;
 void serprintln(String s) {
   if (Serial) Serial.println(s);    
@@ -156,9 +158,11 @@ void setup() {
     }
 
     pinMode(LED_PIN, OUTPUT);
+    pinMode(START_PIN, INPUT);
     STARTTIME = millis();
 }
 
+int oldStartPinVal = 110;
 byte CANDSENDCMD = 0;
 
 void loop() { 
@@ -186,6 +190,12 @@ void loop() {
   
   loop_bt();  
   loop_balance();
+
+  int startPinVal = digitalRead(START_PIN);
+  if (oldStartPinVal != startPinVal) {
+    oldStartPinVal = startPinVal;
+    Serial.println("Startpin " + String(oldStartPinVal));
+  }
 }
 
 void loop_bt() {  
@@ -225,10 +235,14 @@ void loop_bt() {
         blinkState = !blinkState;
         Serial.println("led to " + String(blinkState));
         digitalWrite(LED_PIN, blinkState);
+        return;
       }else if (serBuf.val == "blueinit") {
         blueState = "INIT";
+        return;
       }else if (serBuf.cmd == "show") {
-        debugShow = !debugShow;
+        debugShow = !debugShow;        
+        Serial.println("Debug is " + String(debugShow));
+        return;
       }
       BTSerial.write(serBuf.origVal.c_str());
       BTSerial.write("\r\n");
@@ -292,6 +306,10 @@ void yprActI() {
   int l = lrDiff;
   int r = -lrDiff;
   int frDiff = (int)(ypr[1]/yrScale*SCALE);
+  if (frDiff > SCALE) {
+    lCmd.AddCommand("l:0\n");
+    rCmd.AddCommand("r:0\n");  
+  }
   l -= frDiff;
   r -= frDiff;
   l = driveLimit(l);
