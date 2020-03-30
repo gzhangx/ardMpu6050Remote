@@ -15,7 +15,8 @@ const int BLUEINT = 2;
 const int MPUINT = 3;
 SoftwareSerial BTSerial(BLUEINT,10); // blue tx, blue rx
 unsigned long lastAvailableTime = millis();
-unsigned long debugShow = 0;
+byte debugShow = 0;
+
 //A5 => SCL
 //A4 => SDA
 #if I2CDEV_IMPLEMENTATION == I2CDEV_ARDUINO_WIRE
@@ -208,7 +209,7 @@ void loop_bt() {
       }else if (serBuf.val == "blueinit") {
         blueState = "INIT";
       }else if (serBuf.cmd == "show") {
-        debugShow = millis()+serBuf.val.toInt();
+        debugShow = !debugShow;
       }
       BTSerial.write(serBuf.origVal.c_str());
       BTSerial.write("\r\n");
@@ -230,7 +231,7 @@ void loop_balance() {
       mpu.dmpGetQuaternion(&q, fifoBuffer); //get value for q
       mpu.dmpGetGravity(&gravity, &q); //get value for gravity
       mpu.dmpGetYawPitchRoll(ypr, &q, &gravity); //get value for ypr
-      //if (debugShow > millis()) 
+      if (debugShow) 
       {
         for (int i = 0; i < 3; i++) {
           float ypri = ypr[i];
