@@ -35,6 +35,8 @@ unsigned long ledBlinkTime = 3000;
 Quaternion q;           // [w, x, y, z]         quaternion container
 VectorFloat gravity;    // [x, y, z]            gravity vector
 float ypr[3];           // [yaw, pitch, roll]   yaw/pitch/roll container and gravity vector
+float yprOld[3] = {0,0,0};
+float yprMax[3] = {0,0,0}, yprMin[3]= {0,0,0};
 
 #define LED_PIN 13 // (Arduino is 13, Teensy is 11, Teensy++ is 6)
 bool blinkState = false;
@@ -228,8 +230,21 @@ void loop_balance() {
       mpu.dmpGetQuaternion(&q, fifoBuffer); //get value for q
       mpu.dmpGetGravity(&gravity, &q); //get value for gravity
       mpu.dmpGetYawPitchRoll(ypr, &q, &gravity); //get value for ypr
-      if (debugShow > millis()) {
-        Serial.println(String(ypr[0]) + " " + String(ypr[1])+" " + String(ypr[2]));
+      //if (debugShow > millis()) 
+      {
+        for (int i = 0; i < 3; i++) {
+          float ypri = ypr[i];
+          if (yprMax[i] < ypri) yprMax[i] = ypri;
+          if (yprMin[i] > ypri) yprMin[i] = ypri;
+          float diff = abs(yprOld[i] - ypri);
+          if (diff > 0.2) {
+            yprOld[i] = ypri;
+            Serial.println("for " + String(i)+" val="+String(ypri)+ " diff="+String(diff)+ " ("+String(yprMin[i])+","+String(yprMax[i])+")");
+            //for 2 left right (-0.84,0.86)
+            //1 low high (-0.84,0.86)
+          }
+        }
+        //Serial.println(String(ypr[0]) + " " + String(ypr[1])+" " + String(ypr[2]));
       }
       
    }
