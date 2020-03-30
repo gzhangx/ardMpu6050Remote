@@ -47,38 +47,46 @@ void serprintln(String s) {
         //BTSerial.write(s[i]);         
 }
 
+class QueueCommand {
+  unsigned long lastCmdSendTime = millis();
+  unsigned long DELAY = 200;
+  bool haveCmdToSend = false;
+  String curCmd = "";
+  String oldCmd = "";
+ public:
+  QueueCommand(){
+    DELAY = 200;
+  }
+  QueueCommand(unsigned long delay){
+    DELAY = delay;
+  }
+  void AddCommand(String cmd) {
+    haveCmdToSend = true;
+    curCmd = cmd;
+  }
+  String GetCommand() {
+    if (!haveCmdToSend) return "";
+    if (millis() - lastCmdSendTime < DELAY) return ""; 
+    if (curCmd == oldCmd) {
+      haveCmdToSend = false;
+      return "";
+    }
+    oldCmd = curCmd;
+    lastCmdSendTime = millis();
+    return curCmd;
+  }
+};
+
 RecBuf serBuf, blueBuf;
 
+QueueCommand lCmd, rCmd, genCmd;
+
+QueueCommand* queueCmds[3];
+
 unsigned long lastBlueSendTime = millis();
+unsigned long STARTTIME = millis();
 String blueState = "INIT";
 
-String blueReportStr = "";
-String curWorkingBlueReportStr = "";
-int curWorkingBlueReportStrProg=0;
-unsigned long lastBlueTime = millis();
-void actualStateBlueReport() {
-  if (millis() - lastBlueTime < 500) return;
-  if (curWorkingBlueReportStr == "") {
-    curWorkingBlueReportStr = blueReportStr;
-  }
-  if (curWorkingBlueReportStr == "") return;
-  if (curWorkingBlueReportStrProg < curWorkingBlueReportStr.length()){
-     BTSerial.write(curWorkingBlueReportStr[curWorkingBlueReportStrProg++]);
-  }else {
-    lastBlueTime = millis();
-    BTSerial.write('\n');
-     curWorkingBlueReportStr = blueReportStr;     
-     curWorkingBlueReportStrProg=0;
-     blueReportStr = "";
-  }       
-}
-
-void blueReport(String s) {
-  blueReportStr = s;  
-  //for (int i = 0; i < s.length(); i++)
-  //  BTSerial.write(s[i]);
-  //BTSerial.write('\n');
-}
 
 volatile bool mpuInterrupt = false;     // indicates whether MPU interrupt pin has gone high
 void dmpDataReady()
@@ -87,6 +95,10 @@ void dmpDataReady()
 }
 
 void setup() {
+  queueCmds[0] = &lCmd;
+  queueCmds[1] = &rCmd;
+  queueCmds[2] = &genCmd;
+  
     Serial.begin(115200);
     serprintln("serial initialized");
     BTSerial.begin(57600);
@@ -144,11 +156,18 @@ void setup() {
     }
 
     pinMode(LED_PIN, OUTPUT);
+    STARTTIME = millis();
 }
 
+byte CANDSENDCMD = 0;
 
 void loop() { 
-  
+  if (millis() - STARTTIME > 5000) {
+    if (!CANDSENDCMD) {
+       CANDSENDCMD = 1;
+       Serial.println("5s passed");
+    }
+  }
   if (millis() - lastBlueSendTime > ledBlinkTime) {
     blinkState = !blinkState;
     digitalWrite(LED_PIN, blinkState);
@@ -167,7 +186,6 @@ void loop() {
   
   loop_bt();  
   loop_balance();
-  actualStateBlueReport();
 }
 
 void loop_bt() {  
@@ -194,6 +212,7 @@ void loop_bt() {
        }else if (blueBuf.origVal == "+Connected") {
           ledBlinkTime = 200;
           blueState = "CONNECTED";
+          CANDSENDCMD = 1;
        }
        
      }
@@ -215,6 +234,15 @@ void loop_bt() {
       BTSerial.write("\r\n");
     }
   }  
+
+  for (int i = 0; i < 3; i++) {
+    QueueCommand * cmd = queueCmds[i];
+    String cmdStr = cmd->GetCommand();
+    if (cmdStr != "" && CANDSENDCMD) {
+      BTSerial.write(cmdStr.c_str());
+      Serial.print(cmdStr);
+    }
+  }
 }
 
 void loop_balance() {
@@ -247,7 +275,27 @@ void loop_balance() {
         }
         //Serial.println(String(ypr[0]) + " " + String(ypr[1])+" " + String(ypr[2]));
       }
-      
+      yprActI();
    }
    //serprintln("int="+String(mpuInterrupt) + " fifoCount=" + String(fifoCount)+"/"+String(packetSize)+" i=" +String(input)+" o=" + String(output));
+}
+
+
+int driveLimit(int d) {
+  if (abs(d) < 3) return 0;
+  return d;
+}
+void yprActI() {
+  int SCALE = 10;
+  float yrScale = 0.86;
+  int lrDiff = (int)(ypr[2]/yrScale*SCALE);
+  int l = lrDiff;
+  int r = -lrDiff;
+  int frDiff = (int)(ypr[1]/yrScale*SCALE);
+  l -= frDiff;
+  r -= frDiff;
+  l = driveLimit(l);
+  r = driveLimit(r);
+  lCmd.AddCommand(String("l:")+String(l)+"\n");
+  rCmd.AddCommand(String("r:")+String(r)+"\n");
 }
