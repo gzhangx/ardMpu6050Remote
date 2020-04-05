@@ -239,7 +239,10 @@ void loop_bt() {
         blueState = "INIT";
         return;
       }else if (serBuf.cmd == "show" || serBuf.val == "show") {
-        debugShow = !debugShow;        
+        if (serBuf.val == "show")
+          debugShow = !debugShow;
+        else 
+          debugShow = (byte)serBuf.val.toInt();
         Serial.println("Debug is " + String(debugShow));
         return;
       }
