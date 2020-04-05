@@ -5,7 +5,6 @@
  * Build on Lib: https://github.com/jrowberg/i2cdevlib/tree/master/Arduino/MPU6050
  */
 
-
 #include "MPU6050_6Axis_MotionApps20.h" //https://github.com/jrowberg/i2cdevlib/tree/master/Arduino/MPU6050
 //A4 -SDA
 //A5-SCL
@@ -108,8 +107,8 @@ void setup() {
     
     #if I2CDEV_IMPLEMENTATION == I2CDEV_ARDUINO_WIRE
         serprintln("wire.begin");
-        //Wire.begin();
-        //Wire.setClock(400000); // 400kHz I2C clock. Comment this line if having compilation difficulties
+        Wire.begin();
+        Wire.setClock(400000); // 400kHz I2C clock. Comment this line if having compilation difficulties
     #elif I2CDEV_IMPLEMENTATION == I2CDEV_BUILTIN_FASTWIRE
         Fastwire::setup(400, true);
     #endif
