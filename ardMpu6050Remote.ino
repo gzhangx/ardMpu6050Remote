@@ -10,6 +10,7 @@
 //A5-SCL
 #include "SoftwareSerial.h"
 #include "GArduinoBufUtil.h"
+const long BTBAUD = 9600;  //9600:4 19200:5 38400:6,  57600:7, 115200:8  AT+BAUD8
 const int BLUEINT = 2;
 const int MPUINT = 3;
 SoftwareSerial BTSerial(BLUEINT,10); // blue tx, blue rx
@@ -102,7 +103,7 @@ void setup() {
   
     Serial.begin(115200);
     serprintln("serial initialized");
-    BTSerial.begin(57600);
+    BTSerial.begin(BTBAUD);
       
     
     #if I2CDEV_IMPLEMENTATION == I2CDEV_ARDUINO_WIRE
@@ -193,12 +194,13 @@ void loop() {
   int startPinVal = digitalRead(START_PIN);
   if (oldStartPinVal != startPinVal) {
     oldStartPinVal = startPinVal;
-    Serial.println("Startpin " + String(oldStartPinVal));
+    //Serial.println("Startpin " + String(oldStartPinVal));
+    genCmd.AddCommand("f:"+String(startPinVal?0:1000)+"\n");
   }
 }
 
 void loop_bt() {  
-  if (BTSerial.available()){    
+  while (BTSerial.available()){    
     int  c = BTSerial.read();
      if (blueBuf.onRecv(c)) {
        Serial.println(blueBuf.origVal);
@@ -212,9 +214,10 @@ void loop_bt() {
          Serial.println("got inq: " + blueBuf.origVal);
          char c = blueBuf.origVal.charAt(5);
          String hex = blueBuf.origVal.substring(7);
+         Serial.println("got inq hex " + hex);
          if (hex == "0x5C313E2D5482") {
             ledBlinkTime = 500;
-            Serial.println("got address, ready to connect");
+            Serial.println("got address, ready to connect to " + String(c));
             blueState = "CONNECTING";
             BTSerial.write(("AT+CONN"+String(c)+"\r\n").c_str());
          }
@@ -223,11 +226,19 @@ void loop_bt() {
           blueState = "CONNECTED";
           CANDSENDCMD = 1;
        }
+       //else if (blueBuf.origVal != "OK" && blueBuf.origVal != "+INQE" && !debugShow) {
+       //   Serial.println("warning unknows state " + blueBuf.origVal);
+       //   if (blueState = "WAIT") {
+       //     BTSerial.write("AT+INQ\r\n");
+       //     ledBlinkTime = 1000;
+       //     Serial.println("Sent INQ state=" + blueState);
+       //   }
+       //}
        
      }
   }
   // Keep reading from Arduino Serial Monitor and send to HC-05
-  if (Serial.available()){
+  while (Serial.available()){
     int c = Serial.read();
     if (serBuf.onRecv(c)) {
       if (serBuf.val == "led") {
