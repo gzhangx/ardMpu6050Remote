@@ -238,7 +238,7 @@ void loop_bt() {
       }else if (serBuf.val == "blueinit") {
         blueState = "INIT";
         return;
-      }else if (serBuf.cmd == "show") {
+      }else if (serBuf.cmd == "show" || serBuf.val == "show") {
         debugShow = !debugShow;        
         Serial.println("Debug is " + String(debugShow));
         return;
