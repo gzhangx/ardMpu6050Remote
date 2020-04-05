@@ -308,9 +308,11 @@ void yprActI() {
   int l = lrDiff;
   int r = -lrDiff;
   int frDiff = (int)(ypr[1]/yrScale*SCALE);
-  if (frDiff > SCALE) {
+  
+  if (abs(frDiff) > SCALE+1) {
     lCmd.AddCommand("l:0\n");
-    rCmd.AddCommand("r:0\n");  
+    rCmd.AddCommand("r:0\n");
+    return;
   }
   l -= frDiff;
   r -= frDiff;
